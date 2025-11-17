@@ -263,44 +263,35 @@ uint16_t sinWave[256] = {
 	0x867f,
 	0x837f};
 
+// uint8_t loop = 0;						// 是否循环
+// uint8_t reverseDir = 0;					// 反向旋转
+// uint8_t servoMode = 0;					// 伺服模式 0 严格的恒定加速度 1 渐变的加速度
 
-uint8_t loop = 0;						// 是否循环
-uint8_t reverseDir = 0;					// 反向旋转
-uint8_t servoMode = 0;					// 伺服模式 0 严格的恒定加速度 1 渐变的加速度
-uint8_t subEDegBits = 7;				// 电角度以下的位数（精细度）
-uint8_t oneDirectionOnly = 0;			// 只能以正向旋转 （配合 loop）
-uint16_t staticCurrent = 18000;			// 静态电流
-uint16_t dynamicCurrent = 18000;		// 动态电流
-uint16_t dynamicCurrentK = 50;			// 动态电流系数
-uint16_t maxVel = 40;					// 最大速度
-uint16_t maxAcc = 15000;				// 最大加速度
-uint32_t totalPulse = 9000000;			// 总行程脉冲数
-int32_t zeroPos = 0;					// 零点粗略位置
-uint32_t calibRange = 50000;			// 零点校准的范围
-uint16_t motor_hardware_flags = 0x0000; // 电机硬件参数
+// uint8_t oneDirectionOnly = 0;			// 只能以正向旋转 （配合 loop）
+
+// uint16_t staticCurrent = 18000;			// 静态电流
+// uint16_t dynamicCurrent = 18000;		// 动态电流
+// uint16_t dynamicCurrentK = 50;			// 动态电流系数
+// uint16_t maxVel = 40;					// 最大速度
+// uint16_t maxAcc = 15000;				// 最大加速度
+
+// uint32_t totalPulse = 9000000;			// 总行程脉冲数
+// int32_t zeroPos = 0;					// 零点粗略位置
+// uint32_t calibRange = 50000;			// 零点校准的范围
+
+uint8_t subEDegBits = 7; // 电角度以下的位数（精细度）
 
 float velocityK = 0.0005f; // 电机速度系数
 float accK = 15.0f;		   // 电机加速度系数
-
 
 // omg > 0 时，电机逆时针旋转
 
 // 触发限位的时间点：   omgF > 0 && ((limBytes[limByteIndex] & limTestBit)) && !(histLimBytes[limByteIndex] & limTestBit)
 //  omg>0 0->1
 //  omg<0 1->0
-// 电机的角度差是否为周期内差
-// uint8_t circularDelta = 1;
 
-// 电机的最大角速度
-// float omgMax = 220; // 720
-// 电机的最大角加速度
-// const float accMax = 15800;
-
-// 二阶运动角加速度系数
-// const float accK = 0.009f;
-// 二阶运动阻尼系数    -  每次执行时，将角速度削减 resist * omg
-const float subResist = 1 - 0.0025f; // 0.0025f;
-const float resist = 0.0035f;		 // 0.0025f;
+// const float subResist = 1 - 0.0025f; // 0.0025f;
+// const float resist = 0.0035f;		 // 0.0025f;
 
 // 电机复位状态  0: 不在复位中 1：顺时针复位过程 2：逆时针复位过程
 uint8_t ccZeroProgressState[MOTOR_NUM];
@@ -308,11 +299,23 @@ uint8_t ccZeroProgressState[MOTOR_NUM];
 // 电机控制模式
 uint8_t ccMode[MOTOR_NUM];
 
+// 电机控制位
+uint8_t ccFlags[MOTOR_NUM];
+
+// 电机总行程脉冲数
+uint32_t ccTotalPulse[MOTOR_NUM];
+
 // 电机控制目标位置
 int32_t ccTargetPos[MOTOR_NUM];
 
 // 电机控制目标角速度
 float ccTargetOmega[MOTOR_NUM];
+
+// 电机最高速度
+float ccMaxOmega[MOTOR_NUM];
+
+// 最高加速度
+float ccMaxAcc[MOTOR_NUM];
 
 // 电机的电角度偏移
 uint8_t ccEDegOffset[MOTOR_NUM];
@@ -326,8 +329,12 @@ uint32_t ccZeroProgAccum[MOTOR_NUM];
 // 电机角度
 int32_t ccDegree[MOTOR_NUM];
 
-// 电机占空比系数
-uint16_t ccForce[MOTOR_NUM];
+// 位置维持力
+uint16_t ccStaticForce[MOTOR_NUM];
+// 运动时的基本力
+uint16_t ccDynamicForce[MOTOR_NUM];
+// 运动时基于速度的附加力的系数
+uint16_t ccForceK[MOTOR_NUM];
 
 // 电机转速浮点值
 float ccOmegaF[MOTOR_NUM];
@@ -345,24 +352,76 @@ float ccAccR[MOTOR_NUM];
 uint16_t wavePeriod[MOTOR_NUM];
 uint16_t pwmData[MOTOR_NUM];
 
-
 motorPWMFunc gPwmFunc;
 readInputFunc gInputFunc;
 
-void initCCMotors(uint16_t force, uint8_t mode, float targetOmega, motorPWMFunc pwmFunc, readInputFunc inputFunc)
+void initCCMotors(CCMotorParameters *parameters, motorPWMFunc pwmFunc, readInputFunc inputFunc)
 {
 	gPwmFunc = pwmFunc;
 	gInputFunc = inputFunc;
+	setCCParameters(parameters);
+}
+
+// 设置电机参数
+void setCCParameters(CCMotorParameters *parameters)
+{
 	for (int i = 0; i < MOTOR_NUM; i++)
 	{
-		ccForce[i] = force;
-		ccMode[i] = mode;
-		ccTargetOmega[i] = targetOmega;
+		ccMode[i] = parameters->servoMode;
+		ccFlags[i] = parameters->ctrFlags;
+
+		ccStaticForce[i] = parameters->staticCurrent;
+		ccDynamicForce[i] = parameters->dynamicCurrent;
+		ccForceK[i] = parameters->dynamicCurrentK;
+
+		ccMaxOmega[i] = parameters->maxVel;
+		ccMaxAcc[i] = parameters->maxAcc;
+		if(ccMode[i] == CC_MODE_ORDER2 || ccMode[i] == CC_MODE_CONST_OMG)
+		ccTargetOmega[i] = parameters->maxVel;
+
+		ccTotalPulse[i] = parameters->totalPulse;
+
 		ccZeroPosOffset[i] = 0;
 	}
-	staticCurrent = 12800;
-	dynamicCurrent = 32800;
-	totalPulse = 9000000;
+	subEDegBits = parameters->subEDegBits;
+	if (parameters->velocityK != 0)
+	{
+		velocityK = parameters->velocityK;
+	}
+	if (parameters->accK != 0)
+	{
+		accK = parameters->accK;
+	}
+}
+
+// 写入电机目标位置数组
+void setCCTargetPosArray(int32_t *posList, uint16_t length, uint8_t bitsMode)
+{
+	switch (bitsMode & 0x03)
+	{
+	case 0:
+	{
+		for (int i = 0; i < MOTOR_NUM; i++)
+		{
+			ccTargetPos[i] = (ccTotalPulse[i] >> 8) * posList[i];
+		}
+		break;
+	}
+	case 1:
+		for (int i = 0; i < MOTOR_NUM; i++)
+		{
+			ccTargetPos[i] = (ccTotalPulse[i] >> 16) * posList[i];
+		}
+		break;
+	case 2:
+		for (int i = 0; i < MOTOR_NUM; i++)
+		{
+			ccTargetPos[i] = posList[i];
+		}
+		break;
+	default:
+		break;
+	}
 }
 
 void writeMotorPwm()
@@ -374,7 +433,7 @@ void writeMotorPwm()
 	{
 
 		uint16_t w;
-		if (reverseDir)
+		if (ccFlags[i] & CC_FLAG_REVERSE)
 		{
 			w = sinWave[255 - (((*degPtr >> subEDegBits) + ccEDegOffset[i])) & 0xff];
 		}
@@ -388,22 +447,21 @@ void writeMotorPwm()
 
 		if (ccAccR[i] > 1 || ccAccR[i] < -1 || omg != 0)
 		{
-			f += dynamicCurrent;
+			f += ccDynamicForce[i];
 		}
 		else
 		{
-			f += staticCurrent;
+			f += ccStaticForce[i];
 		}
-	
-		#if (PWM_COMPENSATE_BY_TABLE)
-			f += motorVelPWM[omg];
-		#else
-			if (omg < 0)
-				f -= omg * dynamicCurrentK;
-			else
-				f += omg * dynamicCurrentK;
-		#endif
-		
+
+#if (PWM_COMPENSATE_BY_TABLE)
+		f += motorVelPWM[omg];
+#else
+		if (omg < 0)
+			f -= omg * ccForceK[i];
+		else
+			f += omg * ccForceK[i];
+#endif
 
 		if (f > 65535)
 		{
@@ -425,7 +483,6 @@ void writeMotorPwm()
 			b |= 0x8000;
 		}
 
-
 		// if (ccOmegaF[i] == 0)
 		// {
 		// 	pwmData[i] = 0x0000;
@@ -434,12 +491,10 @@ void writeMotorPwm()
 		{
 			pwmData[i] = (a & 0xff00) | ((b >> 8));
 		}
-
 	}
 
-	gPwmFunc(pwmData, MOTOR_NUM,motor_hardware_flags);
+	gPwmFunc(pwmData, MOTOR_NUM, (ccFlags[0] & 0x80) ? 0x0001 : 0x0000);
 }
-
 
 uint8_t needReadLim = 0;
 uint8_t displayPainting;
@@ -449,17 +504,18 @@ float accP = 0.0001f;
 void updateCCMotors()
 {
 
-
 	readLimBytes();
 	int32_t deltaPos;
 
 	uint8_t limTestBit;
 	uint16_t limByteIndex;
-	uint8_t zeroProgressGoing = 0;
-	uint32_t tp = totalPulse;
+	// uint8_t zeroProgressGoing = 0;
+	// uint32_t tp = totalPulse;
+
 	uint32_t *zeroAccumPtr = ccZeroProgAccum;
 	for (int i = 0; i < MOTOR_NUM; i++)
 	{
+		uint32_t totalPulse = ccTotalPulse[i];
 		float omgF = ccOmegaF[i];
 		float accF = ccAcc[i];
 		int16_t omg;
@@ -529,7 +585,7 @@ void updateCCMotors()
 		if (zps == 0)
 		{
 			deltaPos = (ccTargetPos[i] - ccDegree[i]);
-			if (loop)
+			if (ccFlags[i] & CC_FLAG_LOOP)
 			{
 				// deltaPos = deltaPos % (totalPulse);
 				if (totalPulse != 0)
@@ -543,7 +599,7 @@ void updateCCMotors()
 						deltaPos += totalPulse;
 				}
 
-				if (oneDirectionOnly)
+				if (ccFlags[i] & CC_FLAG_SINGLE_DIRECTION)
 				{
 					if (deltaPos < -(totalPulse >> 3))
 						deltaPos += totalPulse;
@@ -563,7 +619,7 @@ void updateCCMotors()
 					if (targetOmgPre > 20 || targetOmgPre < -20)
 					{
 						targetOmgSet = ccTargetOmega[i];
-						
+
 						if (targetOmgPre > 0)
 						{
 							// targetOmgPre = targetOmgSet;
@@ -585,14 +641,14 @@ void updateCCMotors()
 				case CC_MODE_ORDER2: // 带震荡和阻尼的运动
 
 					float tgtVel = deltaPos * velocityK;
-					if (tgtVel > maxVel)
-						tgtVel = maxVel;
-					if (tgtVel < -maxVel)
-						tgtVel = -maxVel;
+					if (tgtVel > ccMaxOmega[i])
+						tgtVel = ccMaxOmega[i];
+					if (tgtVel < -ccMaxOmega[i])
+						tgtVel = -ccMaxOmega[i];
 
 					float deltaVel = tgtVel - omgF;
 					accF = deltaVel * accK;
-					if (!loop)
+					if (!(ccFlags[i] & CC_FLAG_LOOP))
 					{
 						if (toReset)
 						{
@@ -611,7 +667,7 @@ void updateCCMotors()
 		}
 		else
 		{
-			int16_t zeroProgVel = maxVel >> 2;
+			int16_t zeroProgVel = (int32_t)(ccMaxOmega[i]) >> 2;
 			if (zps == 1)
 			{
 				omgF = -zeroProgVel;
@@ -629,15 +685,14 @@ void updateCCMotors()
 					ccZeroProgAccum[i] = 0xffffffff;
 				}
 			}
-
-			zeroProgressGoing = 1;
+			// zeroProgressGoing = 1;
 			ccOmegaF[i] = omgF;
 		}
 
-		if (accF > maxAcc)
-			accF = maxAcc;
-		if (accF < -maxAcc)
-			accF = -maxAcc;
+		if (accF > ccMaxAcc[i])
+			accF = ccMaxAcc[i];
+		if (accF < -ccMaxAcc[i])
+			accF = -ccMaxAcc[i];
 
 		omgF = omgF + accF * accP;
 
@@ -650,9 +705,8 @@ void updateCCMotors()
 		ccAccR[i] = accF;
 	}
 
-	needReadLim = zeroProgressGoing;
+	// needReadLim = zeroProgressGoing;
 	writeMotorPwm();
-
 }
 
 uint8_t readingLimBytes = 0;
