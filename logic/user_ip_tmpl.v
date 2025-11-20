@@ -45,6 +45,7 @@ module user_ip (
   output tri0        SH6,
   output tri0        ST1,
   output tri0        ST2,
+  output tri0        csp_intr_in,
   input              sys_clock,
   input              bus_clock,
   input              resetn,

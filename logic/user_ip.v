@@ -45,6 +45,7 @@ module user_ip (
   output tri0        SH6,
   output tri0        ST1,
   output tri0        ST2,
+  output tri0        csp_intr_in,
   input              sys_clock,
   input              bus_clock,
   input              resetn,
@@ -80,14 +81,17 @@ module user_ip (
 );
 
 wire reset = ~resetn;
-assign mem_ahb_hreadyout = 1'b1;
+assign mem_ahb_hreadyout = csp_slave_sel ? csp_slave_ready : 1'b1;
 assign slave_ahb_hready  = 1'b1;
 
+assign mem_ahb_hresp = 1'b0;
+
+wire csp_slave_ready;
 
 // AHB各子模块选择信号
 wire step_motor_controller_sel = (ahb_add_reg[31:12] == 20'h60000);
 wire serial_input_sel = (mem_ahb_haddr[31:4] == 28'h6000100);
-wire csp_slave_sel = (ahb_add_reg[31:16] == 16'h6001) | (mem_ahb_haddr[31:16] == 16'h6001);
+wire csp_slave_sel = (mem_ahb_haddr[31:16] == 16'h6001);
 
 
 wire [31:0] serial_input_hrdata;
@@ -165,7 +169,6 @@ wire shi;
 wire motor_dbg;
 
 assign D0 = sdata[0];
-// assign D0 = motor_dbg;
 assign D1 = sdata[1];
 assign D2 = sdata[2];
 assign D3 = sdata[3];
@@ -217,7 +220,30 @@ motor_dbg
 );
 
 
+// CSPI 链式SPI
+cspi cspi_inst (
+    .clk        (sys_clock),
+    .ahb_addr_valid (csp_slave_sel),
+    .reset_n    (resetn),
+    .mem_ahb_htrans (mem_ahb_htrans),
+    .mem_ahb_hready (mem_ahb_hready),
+    .mem_ahb_hwrite (mem_ahb_hwrite),
+    .mem_ahb_haddr  (mem_ahb_haddr),
+    .mem_ahb_hsize  (mem_ahb_hsize),
+    .mem_ahb_hburst (mem_ahb_hburst),
+    .mem_ahb_hwdata (mem_ahb_hwdata),
+    .mem_ahb_hreadyout(csp_slave_ready),
+    .mem_ahb_hresp   (),  
+    .mem_ahb_hrdata  (csp_slave_rdata),
 
+    .intr(csp_intr_in),
+    .CI_CS      (CI_CS),
+    .CI_CK      (CI_CK),
+    .CI_DAT     (CI_DAT),
+    .CO_CS      (CO_CS),
+    .CO_CK      (CO_CK),
+    .CO_DAT     (CO_DAT)
+);
 
 
 

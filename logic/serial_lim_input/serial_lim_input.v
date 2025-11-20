@@ -66,7 +66,11 @@ integer pack_idx;
 
 wire trigger_rise = trigger_sync0 & ~trigger_sync1;
 wire shift_rise = shift_out & ~shift_out_d;
-wire ahb_read_transfer = ahb_addr_valid && mem_ahb_htrans[1] && mem_ahb_hready && !mem_ahb_hwrite;
+// wire ahb_read_transfer = ahb_addr_valid && mem_ahb_htrans[1] && mem_ahb_hready && !mem_ahb_hwrite;
+
+wire ahb_read_transfer = ahb_addr_valid && mem_ahb_htrans[1];
+
+
 wire [2:0] read_idx_raw = mem_ahb_haddr[4:2];
 // Base 32-bit words are selected with bits [4:2]. Channel data is grouped
 // with channel 0 in the least significant CHANNEL_DEPTH bits, channel 1
@@ -81,7 +85,7 @@ assign shift = shift_out & load;
 always @(posedge clk or negedge reset_n) begin
     if (!reset_n) begin
         mem_ahb_hrdata <= 32'b0;
-    end else if (ahb_read_transfer) begin
+    end else  begin //if (ahb_read_transfer)
         mem_ahb_hrdata <= read_chunk;
     end
 end

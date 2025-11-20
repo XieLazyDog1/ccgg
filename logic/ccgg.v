@@ -339,6 +339,7 @@ user_ip macro_inst(
   .SH6                (SH6                ),
   .ST1                (ST1                ),
   .ST2                (ST2                ),
+  .csp_intr_in        (csp_intr_in        ),
   .sys_clock          (sys_gck            ),
   .bus_clock          (bus_clk            ),
   .resetn             (sys_resetn         ),
@@ -399,7 +400,7 @@ wire [7:0] gpio5_io_in = {1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0};
 
 wire [7:0] gpio6_io_out_data;
 wire [7:0] gpio6_io_out_en;
-wire [7:0] gpio6_io_in = {1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0};
+(* keep = 1 *) wire [7:0] gpio6_io_in = {1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, csp_intr_in};
 
 wire [7:0] gpio7_io_out_data;
 wire [7:0] gpio7_io_out_en;
